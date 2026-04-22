@@ -1,0 +1,100 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #101014;
+    color: #101014;
+    margin: 0;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+}
+
+table {
+    width: 100%; /* Таблицы будут занимать всю ширину блока */
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 8px;
+    text-align: left;
+}
+
+th {
+    background-color: black;
+    position: sticky;
+    top: 0;
+}
+
+footer {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.order-book {
+    display: flex;
+    justify-content: space-between; /* Раздвигает таблицы на всю ширину */
+}
+
+.order-table {
+    width: 48%; /* Определяет ширину обеих таблиц */
+    margin: 0 1%; /* Отступ между таблицами */
+    background: black; /* Белый фон для таблиц */
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Легкая тень для визуального отделения */
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.ask-header {
+    background-color: red; /* Красный для заголовка Asks */
+    color: gray; /* Цвет текста заголовка */
+    padding: 10px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+.bid-header {
+    background-color: lightblue; /* Голубой для заголовка Bids */
+    color: black; /* Цвет текста заголовка */
+    padding: 10px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+.ask-price, .ask-volume {
+    color: red; /* Красный для цен и объемов на продажу */
+}
+
+.bid-price, .bid-volume {
+    color: blue; /* Синий для цен и объемов на покупку */
+}
+
+.header-row-style {
+    background-color: #101014;
+    margin-left: 0.5px;
+    margin-right: 0.5px;
+    padding-top: 5px;
+    padding-bottom: 10px;
+}
+
+.symbol-dropdown {
+    height: auto;
+    overflow-y: auto;
+    position: absolute;
+    display: block;
+    z-index: 1;
+}
+
+.btn-black {
+    background-color: #101014;
+    color: #aeb1b7;
+    border-radius: 0;
+    border: 0px;
+}
+
+.btn-black:hover {
+    filter: brightness(1.2);
+    background-color: black;
+}

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candlestick Chart and Order Book</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    <header>
+        <div class="row g-3 header-row-style">
+            <div class="btn-group me-2" role="group" aria-label="Second group" style="background-color: #101014;">
+                <div style="display: inline">
+                    <button type="submit" class="btn btn-black" onclick="changeTF15min()">15 min</button>
+                </div>
+                <div style="display: inline">
+                    <button type="submit" class="btn btn-black" onclick="changeTF1hour()">1 hour</button>
+                </div>
+
+                <div class="dropdown" style="display: inline;">
+                    <select id="timeframe" class="btn btn-black dropdown-toggle" aria-labelledby="dropdownMenuButton1">
+                        <option value="1m" class="dropdown-item">1 min</option>
+                        <option value="5m" class="dropdown-item">5 min</option>
+                        <option value="15m" class="dropdown-item" selected>15 min</option>
+                        <option value="30m" class="dropdown-item">30 min</option>
+                        <option value="1h" class="dropdown-item">1 hour</option>
+                        <option value="2h" class="dropdown-item">2 hours</option>
+                        <option value="4h" class="dropdown-item">4 hours</option>
+                    </select>
+                </div>
+
+                <div class="dropdown" style="display: inline;">
+                    <select id="symbol" class="btn btn-black dropdown-toggle symbol-dropdown" aria-labelledby="dropdownMenuButton1">
+                        {% for symbol in symbols %}
+                            <option value="{{ symbol|escape }}" {% if symbol == selected_option_symbol %}selected{% endif %}>{{ symbol|escape }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="chart-and-order-book">
+            <div id="chart"></div>
+            <div class="order-book">
+                <h2 id="order-book-header"></h2>
+
+                <div class="order-table">
+                    <h3 class="ask-header">Sell Orders (Asks)</h3>
+                    <table id="asks-table">
+                        <tr>
+                            <th>Price</th>
+                            <th>Volume</th>
+                        </tr>
+                        {% for ask in asks %}
+                        <tr>
+                            <td style="color: red;">{{ ask[0] }}</td>
+                            <td style="color: red;">{{ ask[1] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+
+                <div class="order-table">
+                    <h3 class="bid-header">Buy Orders (Bids)</h3>
+                    <table id="bids-table">
+                        <tr>
+                            <th>Price</th>
+                            <th>Volume</th>
+                        </tr>
+                        {% for bid in bids %}
+                        <tr>
+                            <td style="color: blue;">{{ bid[0] }}</td>
+                            <td style="color: blue;">{{ bid[1] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            <footer>
+                <p id="total_ask_value_p">Total ask volume: </p>
+                <p id="total_bid_value_p">Total bid volume: </p>
+                <p id="nzvolume_p">Total non-zero volume: </p>
+            </footer>
+        </div>
+    </main>
+    <script>
+        // allows instantly load the chart with a preselected symbol
+        window.onload = function() {
+            const symbols_dropdown = document.getElementById('symbol');
+            symbols_dropdown.value = "{{ selected_option_symbol }}";
+        }
+
+        function parseDate(dateString) {
+            return new Date(dateString).toISOString();  // Converts to ISO format
+        }
+
+        const chart = document.getElementById('chart');
+        let xRange;
+        let yRange;
+
+        let currentData;
+        let currentLayout;
+
+
+        function updateOrdersTable(newOrdersList, tableId) {
+            const table = document.getElementById(tableId);
+            table.innerHTML = '';
+
+            newOrdersList.forEach(orderInfo => {
+                const orderItem = document.createElement('tr');
+
+                const priceCell = document.createElement('td');
+                priceCell.className = 'ask-price';
+                priceCell.innerText = orderInfo[0];
+
+                const volumeCell = document.createElement('td');
+                volumeCell.className = 'ask-volume';
+                volumeCell.innerText = orderInfo[1];
+
+                orderItem.appendChild(priceCell);
+                orderItem.appendChild(volumeCell);
+                table.appendChild(orderItem);
+            });
+        }
+
+
+        function changeCoords(eventData) {
+            console.log(eventData['xaxis.range[0]']);
+            if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
+                xRange = [
+                    eventData['xaxis.range[0]'],
+                    eventData['xaxis.range[1]']
+                ];
+            }
+            if (eventData['yaxis.range[0]'] && eventData['yaxis.range[1]']) {
+                yRange = [
+                    eventData['yaxis.range[0]'],
+                    eventData['yaxis.range[1]']
+                ];
+            }
+            console.log('Updated ranges (changeCoords):');
+            console.log('x:', xRange);
+            console.log('y:', yRange);
+            console.log('=====================');
+        }
+
+
+        function fetchData(timeframe, symbol) {
+            fetch(`/main-chart/create_candle_plot?timeframe=${timeframe}&symbol=${symbol}`)
+                .then(response => response.json())
+                .then(data => {
+                const graph = JSON.parse(data);
+                if (graph) {
+                    document.getElementById("total_ask_value_p").innerText = "Total ask volume: " + graph.total_ask_value;
+                    document.getElementById("total_bid_value_p").innerText = "Total bid volume: " + graph.total_bid_value;
+                    document.getElementById("nzvolume_p").innerText = "Total non-zero volume: " + graph.nzvolume;
+                    updateOrdersTable(graph.asks, "asks-table");
+                    updateOrdersTable(graph.bids, "bids-table");
+                }
+
+                if (!currentData || (!xRange || !yRange)) {
+                    currentData = graph.data;
+                    currentLayout = graph.layout;
+
+                    console.log("no current data")
+                    console.log("currentData: " + currentData);
+                    console.log("currentLayout: " + currentLayout);
+
+                    Plotly.newPlot('chart', currentData, currentLayout);
+
+                    xRange = chart.layout.xaxis.range;
+                    yRange = chart.layout.yaxis.range;
+
+                    console.log("raw ranges info:")
+                    console.log(chart.layout.xaxis.range);
+                    console.log(chart.layout.yaxis.range);
+
+
+                    chart.on('plotly_doubleclick', () => {
+                        setTimeout(() => {
+                            const layout = chart._fullLayout;
+
+                            xRange = layout.xaxis.range;
+                            yRange = layout.yaxis.range;
+
+                            console.log('x (plotly_doubleclick):', xRange);
+                            console.log('y (plotly_doubleclick):', yRange);
+
+                            Plotly.relayout(chart, {
+                                'xaxis.range': xRange,
+                                'yaxis.range': yRange
+                            });
+                        }, 50);
+                    });
+                    chart.on('plotly_relayout', changeCoords);
+                } else {
+                    console.log("xRange (while updating): " + xRange);
+                    console.log("yRange (while updating): " + yRange);
+
+                    Plotly.react('chart', graph.data, graph.layout).then(() => {
+                        Plotly.relayout(chart, {
+                            'xaxis.range': xRange,
+                            'yaxis.range': yRange
+                        });
+                    });
+
+                    chart.on('plotly_doubleclick', () => {
+                        setTimeout(() => {
+                            const layout = chart._fullLayout;
+
+                            xRange = layout.xaxis.range;
+                            yRange = layout.yaxis.range;
+
+                            console.log('x (plotly_doubleclick):', xRange);
+                            console.log('y (plotly_doubleclick):', yRange);
+
+                            Plotly.relayout(chart, {
+                                'xaxis.range': xRange,
+                                'yaxis.range': yRange
+                            });
+                        }, 50);
+                    });
+
+                    chart.on('plotly_relayout', changeCoords);
+                }
+            }).catch(error => console.error('Error fetching data: ', error));
+        }
+
+        // Initial load with default timeframe
+        const defaultTimeframe = "15m";
+        const defaultSymbol = "BTC/USDT";
+        document.getElementById("order-book-header").innerText = "Order book for " + defaultSymbol;
+
+        let timeframeSelect = document.getElementById("timeframe");
+        let symbolSelect = document.getElementById("symbol");
+        timeframeSelect.value = defaultTimeframe;
+        symbolSelect.value = defaultSymbol;
+
+        document.getElementById("symbol").value = symbolSelect.value;
+        document.getElementById("timeframe").value = timeframeSelect.value;
+        fetchData(timeframeSelect.value, symbolSelect.value);
+
+        // Set up auto-refresh based on the selected timeframe (adjust time as needed)
+        let refreshInterval = setInterval(() => fetchData(timeframeSelect.value, symbolSelect.value), 27000);
+
+        document.getElementById("timeframe").addEventListener("change", (event) => {
+            clearInterval(refreshInterval);  // Clear the previous interval
+            timeframe = event.target.value;
+            xRange = null;
+            yRange = null;
+            fetchData(timeframe, symbolSelect.value);
+            refreshInterval = setInterval(() => fetchData(timeframeSelect.value, symbolSelect.value), 27000);  // Reset interval
+        });
+
+        document.getElementById("symbol").addEventListener("change", (event) => {
+            clearInterval(refreshInterval);  // Clear the previous interval
+            symbol = event.target.value;
+            xRange = null;
+            yRange = null;
+
+            xRangeInit = null;
+            yRangeInit = null;
+
+            xRangeInitChanged = false;
+            yRangeInitChanged = false;
+
+            relayoutStarted = false;
+
+            fetchData(timeframeSelect.value, symbol);
+            document.getElementById("order-book-header").innerText = "Order book for " + symbol;
+            refreshInterval = setInterval(() => fetchData(timeframeSelect.value, symbolSelect.value), 27000);  // Reset interval
+        });
+
+        const selectElement = document.getElementById('symbol');
+
+        // Expand to show multiple options on focus
+        selectElement.addEventListener('focus', function () {
+          this.setAttribute('size', '5'); // Set number of visible options
+        });
+
+        // Collapse back to single option view when focus is lost
+        selectElement.addEventListener('blur', function ()   {
+          this.removeAttribute('size'); // Revert to default single-option display
+        });
+
+        // Function to collapse dropdown and revert positioning
+        function closeDropdown() {
+          selectElement.removeAttribute('size');
+          selectElement.classList.remove('expanded'); // Remove overlay behavior
+        }
+
+        // Event listener for option selection
+        selectElement.addEventListener('change', function () {
+          closeDropdown(); // Close the dropdown when an option is selected
+        });
+
+        selectElement.addEventListener('blur', function () {
+          if (this.getAttribute('size')) {
+            closeDropdown(); // Close dropdown if still expanded
+          }
+        });
+
+        function changeTF15min() {
+            const newTF = "15m";
+            document.getElementById("timeframe").value = newTF;
+            fetchData(newTF, symbolSelect.value);
+        }
+
+        function changeTF1hour() {
+            const newTF = "1h";
+            document.getElementById("timeframe").value = newTF;
+            fetchData(newTF, symbolSelect.value);
+        }
+    </script>
+</body>
+</html>
